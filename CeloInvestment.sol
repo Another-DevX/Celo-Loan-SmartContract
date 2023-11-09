@@ -26,7 +26,6 @@ contract SmartContractCELO is Pausable, Ownable, ReentrancyGuard {
     }
 
     struct Lender {
-        address lender;
         uint256 aggreedQuota;
         Lending[] lendings;
     }
@@ -67,13 +66,14 @@ contract SmartContractCELO is Pausable, Ownable, ReentrancyGuard {
 
         if (timeElapsed >= INTEREST_PERIOD) {
             uint256 periodsElapsed = timeElapsed / INTEREST_PERIOD;
-            uint256 ratePerPeriod = INTEREST_RATE_PER_DAY;
+            uint256 ratePerPeriod = INTEREST_RATE_PER_DAY; // Esta es la tasa diaria sin escalar
 
             uint256 compoundInterest = lending.amount;
             for (uint256 i = 0; i < periodsElapsed; i++) {
+                // Escalar y luego desescalar para prevenir el redondeo a cero.
                 compoundInterest =
-                    compoundInterest *
-                    (1 + ratePerPeriod / 10**8);
+                    (compoundInterest * (10**8 + ratePerPeriod)) /
+                    10**8;
             }
 
             uint256 interestAmount = compoundInterest - lending.amount;
@@ -89,13 +89,13 @@ contract SmartContractCELO is Pausable, Ownable, ReentrancyGuard {
         whenNotPaused
     {
         require(_amount > 0, "Payment amount must be greater than 0");
+        accrueInterest(msg.sender, _lendingIndex);
         Lender storage lender = lenders[msg.sender];
         require(
-            _lendingIndex < lender.lendings.length,
+            _lendingIndex <= lender.lendings.length,
             "Invalid lending index"
         );
         Lending storage lending = lender.lendings[_lendingIndex];
-        accrueInterest(msg.sender, _lendingIndex);
         require(lending.amount > 0, "No active debt to pay");
         require(_amount <= lending.amount, "Payment exceeds the debt amount");
         lending.amount -= _amount;
@@ -254,5 +254,26 @@ contract SmartContractCELO is Pausable, Ownable, ReentrancyGuard {
 
     function unpauseContract() external onlyOwner {
         _unpause();
+    }
+
+    function simulateInterestAccrual(uint256 _amount, uint256 _months)
+        public
+        pure
+        returns (uint256)
+    {
+        uint256 compoundedAmount = _amount;
+        uint256 ratePerPeriod = INTEREST_RATE_PER_DAY; // Asegúrate de que esta tasa esté ajustada adecuadamente
+
+        // Calcula la cantidad de períodos de interés en el plazo dado (aproximadamente 30 días por mes)
+        uint256 periods = _months * 30;
+
+        for (uint256 i = 0; i < periods; i++) {
+            compoundedAmount =
+                (compoundedAmount * (10**8 + ratePerPeriod)) /
+                10**8;
+        }
+
+        // La función devuelve el monto total después de la acumulación de interés, no solo el interés acumulado
+        return compoundedAmount;
     }
 }
