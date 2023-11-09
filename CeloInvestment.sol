@@ -1,26 +1,22 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity 0.8.19;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
+import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v4.4.0/contracts/token/ERC20/IERC20.sol";
+import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v4.4.0/contracts/access/Ownable.sol";
+import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v4.4.0/contracts/security/Pausable.sol";
+
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 contract SmartContractCELO is Pausable, Ownable, ReentrancyGuard {
-    uint256 public constant INTEREST_RATE_PER_DAY = 5;
+    uint256 public constant INTEREST_RATE_PER_DAY = 18796;
     uint256 public constant INTEREST_PERIOD = 24 hours;
 
     IERC20 public cUSDToken;
     uint256 public totalFunds;
     uint256 public totalInterest;
-    AggregatorV3Interface public priceFeed;
 
-    constructor(address _cUSDTokenAddress, address _priceFeedAddress)
-        Ownable(msg.sender)
-    {
+    constructor(address _cUSDTokenAddress) {
         cUSDToken = IERC20(_cUSDTokenAddress);
-        priceFeed = AggregatorV3Interface(_priceFeedAddress);
     }
 
     struct Lending {
@@ -71,10 +67,19 @@ contract SmartContractCELO is Pausable, Ownable, ReentrancyGuard {
 
         if (timeElapsed >= INTEREST_PERIOD) {
             uint256 periodsElapsed = timeElapsed / INTEREST_PERIOD;
-            uint256 interestAmount = ((lending.amount * INTEREST_RATE_PER_DAY) /
-                100) * periodsElapsed;
-            lending.amount += interestAmount;
+            uint256 ratePerPeriod = INTEREST_RATE_PER_DAY;
+
+            uint256 compoundInterest = lending.amount;
+            for (uint256 i = 0; i < periodsElapsed; i++) {
+                compoundInterest =
+                    compoundInterest *
+                    (1 + ratePerPeriod / 10**8);
+            }
+
+            uint256 interestAmount = compoundInterest - lending.amount;
+            lending.amount = compoundInterest;
             totalInterest += interestAmount;
+
             lending.startDate += periodsElapsed * INTEREST_PERIOD;
         }
     }
@@ -188,7 +193,7 @@ contract SmartContractCELO is Pausable, Ownable, ReentrancyGuard {
         whenNotPaused
     {
         require(
-            whitelist[msg.sender],
+            whitelist[msg.sender] == true,
             "The current address is not able to get a loan"
         );
         require(_amount > 0, "The amount is invalid");
@@ -196,6 +201,8 @@ contract SmartContractCELO is Pausable, Ownable, ReentrancyGuard {
             lenders[msg.sender].aggreedQuota >= _amount,
             "The agreed quota is insuficent"
         );
+        uint256 contractBalance = cUSDToken.balanceOf(address(this));
+        require(contractBalance >= _amount, "Contract has insufficient funds");
         lenders[msg.sender].aggreedQuota -= _amount;
         lenders[msg.sender].lendings.push(
             Lending({
@@ -206,7 +213,7 @@ contract SmartContractCELO is Pausable, Ownable, ReentrancyGuard {
         );
 
         require(
-            cUSDToken.transferFrom(msg.sender, address(this), _amount),
+            cUSDToken.transfer(msg.sender, _amount),
             "Transfer failed"
         );
         emit LoanRequested(msg.sender, _amount, _blockMonths);
@@ -228,7 +235,7 @@ contract SmartContractCELO is Pausable, Ownable, ReentrancyGuard {
 
     function withdrawFunds() external whenNotPaused nonReentrant {
         uint256 userFunds = property[msg.sender];
-        require(userFunds > 0, "No funds to withdraw");
+        require(userFunds > 0, "The user is not able to withdraw");
         require(totalFunds >= userFunds, "Insufficient funds in the contract");
         uint256 userPercentage = (userFunds * 1e18) / totalFunds;
         uint256 userInterest = (totalInterest * userPercentage) / 1e18;
