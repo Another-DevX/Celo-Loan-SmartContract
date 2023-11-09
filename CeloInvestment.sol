@@ -8,10 +8,10 @@ import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v4.4.0/contr
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 contract SmartContractCELO is Pausable, Ownable, ReentrancyGuard {
-    uint256 public constant INTEREST_RATE_PER_DAY = 18796;
-    uint256 public constant INTEREST_PERIOD = 24 hours;
+    uint256 internal constant INTEREST_RATE_PER_DAY = 18796;
+    uint256 internal constant INTEREST_PERIOD = 24 hours;
 
-    IERC20 public cUSDToken;
+    IERC20 internal cUSDToken;
     uint256 public totalFunds;
     uint256 public totalInterest;
 
@@ -142,7 +142,6 @@ contract SmartContractCELO is Pausable, Ownable, ReentrancyGuard {
         emit QuotaAdjusted(_lender, lender.aggreedQuota);
     }
 
-    // Function for the owner to decrease a lender's quota
     function decreaseQuota(address _lender, uint256 _amount)
         external
         onlyOwner
@@ -212,10 +211,7 @@ contract SmartContractCELO is Pausable, Ownable, ReentrancyGuard {
             })
         );
 
-        require(
-            cUSDToken.transfer(msg.sender, _amount),
-            "Transfer failed"
-        );
+        require(cUSDToken.transfer(msg.sender, _amount), "Transfer failed");
         emit LoanRequested(msg.sender, _amount, _blockMonths);
     }
 
@@ -254,5 +250,13 @@ contract SmartContractCELO is Pausable, Ownable, ReentrancyGuard {
             cUSDToken.transfer(msg.sender, amountToWithdraw),
             "Failed to send funds"
         );
+    }
+
+    function pauseContract() external onlyOwner {
+        _pause();
+    }
+
+    function unpauseContract() external onlyOwner {
+        _unpause();
     }
 }
