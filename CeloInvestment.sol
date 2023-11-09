@@ -87,7 +87,6 @@ contract SmartContractCELO is Pausable, Ownable, ReentrancyGuard {
     function payDebt(uint256 _lendingIndex, uint256 _amount)
         external
         whenNotPaused
-        nonReentrant
     {
         require(_amount > 0, "Payment amount must be greater than 0");
         Lender storage lender = lenders[msg.sender];
@@ -96,18 +95,15 @@ contract SmartContractCELO is Pausable, Ownable, ReentrancyGuard {
             "Invalid lending index"
         );
         Lending storage lending = lender.lendings[_lendingIndex];
-
         accrueInterest(msg.sender, _lendingIndex);
-
         require(lending.amount > 0, "No active debt to pay");
         require(_amount <= lending.amount, "Payment exceeds the debt amount");
+        lending.amount -= _amount;
 
         require(
             cUSDToken.transferFrom(msg.sender, address(this), _amount),
             "Transfer failed"
         );
-
-        lending.amount -= _amount;
 
         emit PaymentMade(msg.sender, _lendingIndex, _amount, lending.amount);
 
