@@ -56,8 +56,8 @@ contract SmartContractCELO is Pausable, Ownable, ReentrancyGuard {
             cUSDToken.transferFrom(msg.sender, address(this), _amount),
             "Transfer failed"
         );
-        property[msg.sender] += _amount;
         totalFunds += _amount;
+        property[msg.sender] += _amount;
     }
 
     function accrueInterest(address _lender, uint256 _lendingIndex) internal {
@@ -156,31 +156,34 @@ contract SmartContractCELO is Pausable, Ownable, ReentrancyGuard {
         emit QuotaAdjusted(_lender, lender.aggreedQuota);
     }
 
-    function getActiveLoans(address _lender)
-        external
-        view
-        returns (Lending[] memory)
-    {
+    function getActiveLoans(
+        address _lender,
+        uint256 offset,
+        uint256 limit
+    ) external view returns (Lending[] memory) {
         Lender storage lender = lenders[_lender];
-        uint256 activeCount = 0;
-
-        for (uint256 i = 0; i < lender.lendings.length; i++) {
-            if (lender.lendings[i].amount > 0) {
-                activeCount++;
-            }
+        uint256 totalLoans = lender.lendings.length;
+        if (limit > totalLoans - offset) {
+            limit = totalLoans - offset;
         }
 
-        Lending[] memory activeLoans = new Lending[](activeCount);
+        Lending[] memory activeLoans = new Lending[](limit);
         uint256 currentIndex = 0;
 
-        for (uint256 i = 0; i < lender.lendings.length; i++) {
-            if (lender.lendings[i].amount > 0) {
-                activeLoans[currentIndex] = lender.lendings[i];
+        for (uint256 i = 0; i < limit; i++) {
+            Lending storage lending = lender.lendings[offset + i];
+            if (lending.amount > 0) {
+                activeLoans[currentIndex] = lending;
                 currentIndex++;
             }
         }
 
         return activeLoans;
+    }
+
+    function getTotalLoans(address _lender) view external returns (uint256){
+        Lender storage lender = lenders[_lender];
+        return lender.lendings.length;
     }
 
     function requestLoan(uint256 _amount, uint16 _blockMonths)
@@ -262,9 +265,7 @@ contract SmartContractCELO is Pausable, Ownable, ReentrancyGuard {
         returns (uint256)
     {
         uint256 compoundedAmount = _amount;
-        uint256 ratePerPeriod = INTEREST_RATE_PER_DAY; // Asegúrate de que esta tasa esté ajustada adecuadamente
-
-        // Calcula la cantidad de períodos de interés en el plazo dado (aproximadamente 30 días por mes)
+        uint256 ratePerPeriod = INTEREST_RATE_PER_DAY;
         uint256 periods = _months * 30;
 
         for (uint256 i = 0; i < periods; i++) {
@@ -272,8 +273,6 @@ contract SmartContractCELO is Pausable, Ownable, ReentrancyGuard {
                 (compoundedAmount * (10**8 + ratePerPeriod)) /
                 10**8;
         }
-
-        // La función devuelve el monto total después de la acumulación de interés, no solo el interés acumulado
         return compoundedAmount;
     }
 }
