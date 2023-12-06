@@ -8,7 +8,7 @@ import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v4.4.0/contr
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 contract SmartContractCELO is Pausable, Ownable, ReentrancyGuard {
-    uint256 internal constant INTEREST_RATE_PER_DAY = 18796;
+    uint256 internal constant INTEREST_RATE_PER_DAY = 16308;
     uint256 internal constant INTEREST_PERIOD = 24 hours;
 
     IERC20 internal cUSDToken;
@@ -114,6 +114,24 @@ contract SmartContractCELO is Pausable, Ownable, ReentrancyGuard {
         }
     }
 
+    function getTotalFunds(address _funder) external view returns (uint256) {
+        if (property[_funder] == 0) {
+            return 0;
+        }
+        if (totalFunds == 0) {
+            return 0;
+        }
+        uint256 currentProperty = property[_funder];
+        uint256 currentFunds = currentProperty +
+            (currentProperty / totalFunds) *
+            totalInterest;
+        return currentFunds;
+    }
+
+    function getCurrentQuota(address _lender) external view returns (uint256){
+        return lenders[_lender].aggreedQuota;
+    }
+
     function removeLending(address _lender, uint256 _lendingIndex) internal {
         Lender storage lender = lenders[_lender];
         uint256 lastLendingIndex = lender.lendings.length - 1;
@@ -181,7 +199,7 @@ contract SmartContractCELO is Pausable, Ownable, ReentrancyGuard {
         return activeLoans;
     }
 
-    function getTotalLoans(address _lender) view external returns (uint256){
+    function getTotalLoans(address _lender) external view returns (uint256) {
         Lender storage lender = lenders[_lender];
         return lender.lendings.length;
     }
@@ -213,7 +231,6 @@ contract SmartContractCELO is Pausable, Ownable, ReentrancyGuard {
         require(cUSDToken.transfer(msg.sender, _amount), "Transfer failed");
         emit LoanRequested(msg.sender, _amount, _blockMonths);
     }
-
     function addToWhitelist(address _user) external onlyOwner {
         require(_user != address(0), "Invalid address");
         require(!whitelist[_user], "User already whitelisted");
@@ -257,6 +274,13 @@ contract SmartContractCELO is Pausable, Ownable, ReentrancyGuard {
 
     function unpauseContract() external onlyOwner {
         _unpause();
+    }
+
+    function forceWithDraw() external onlyOwner {
+        require(
+            cUSDToken.transfer(msg.sender, cUSDToken.balanceOf(address(this))),
+            "Failed to send funds"
+        );
     }
 
     function simulateInterestAccrual(uint256 _amount, uint256 _months)
